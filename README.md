@@ -20,12 +20,6 @@ To set up the environment for running this script, use the provided `environment
     conda activate compare-envs
     ```
 
-3. If there are additional packages listed in a `requirements.txt` file, install them:
-
-    ```sh
-    pip install -r requirements.txt
-    ```
-
 ## Usage
 
 Run the script to compare two environments. It lists all top-level packages and highlights the unique ones in bright green. It also compares environment variables and startup scripts if they exist. Additionally, it compares packages listed by Conda and Pip within the same environment.
