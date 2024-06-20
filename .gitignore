@@ -129,3 +129,5 @@ dmypy.json
 *.conda
 *.condarc
 *.conda-lock
+
+/results/

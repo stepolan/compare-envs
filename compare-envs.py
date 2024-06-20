@@ -8,15 +8,31 @@ import getpass
 # Initialize colorama
 init(autoreset=True)
 
+import logging
+
 # Set up logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('compare-envs.log'),
-        logging.StreamHandler()
-    ]
-)
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
+# File handler (detailed logging)
+file_handler = logging.FileHandler('compare-envs.log')
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+# Console handler (less detailed)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+def create_results_dir():
+    """Create the results directory if it does not exist."""
+    results_dir = './results'
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+    return results_dir
 
 def clear_screen():
     """Clear the terminal screen."""
@@ -112,6 +128,7 @@ def list_and_display_envs(env_type):
         logging.error(f"No {env_type} environments found.")
         return []
 
+    clear_screen()
     print(f"{Fore.GREEN}Available {env_type} environments:{Style.RESET_ALL}\n")
     print(f"{Fore.CYAN}+----+-----------------------+----------------------------------------------------+{Style.RESET_ALL}")
     print(f"{Fore.CYAN}| #  | Env Name              | Path (redacted username)                           |{Style.RESET_ALL}")
@@ -166,52 +183,6 @@ def install_pipdeptree(env_path, env_type):
             )
     except subprocess.CalledProcessError as e:
         logging.error(f"Error checking/installing pipdeptree in {env_path}: {e}")
-
-def get_top_level_packages(env_path, env_type):
-    """
-    Get the list of top-level installed packages in the given environment using pipdeptree.
-
-    Args:
-    env_path (str): Path to the environment.
-    env_type (str): Type of the environment ('conda' or 'virtualenv').
-
-    Returns:
-    set: A set of top-level installed packages and their versions.
-    """
-    logging.info(f"Activating environment: {env_path}")
-    top_level_packages = set()
-
-    try:
-        # Ensure pipdeptree is installed
-        install_pipdeptree(env_path, env_type)
-
-        # Activate the environment and run pipdeptree
-        if env_type == 'conda':
-            activate_cmd = f"conda run -n {os.path.basename(env_path)} python -m pipdeptree --warn silence --freeze"
-        else:
-            activate_cmd = f"source {env_path}/bin/activate && pipdeptree --warn silence --freeze"
-
-        logging.info(f"Running command: {activate_cmd}")
-        result = subprocess.run(
-            activate_cmd,
-            shell=True,
-            capture_output=True,
-            text=True,
-            executable="/bin/bash"
-        )
-
-        logging.debug(f"pipdeptree output: {result.stdout}")
-
-        if result.returncode == 0:
-            for line in result.stdout.splitlines():
-                if '==' in line and not line.startswith(' '):
-                    package = line.split('==')[0].strip()
-                    top_level_packages.add(package)
-
-        return top_level_packages
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Error collecting top-level pip list from {env_path}: {e}")
-        return set()
 
 def get_env_variables(env_path):
     """
@@ -272,8 +243,8 @@ def compare_conda_and_pip_packages(env_path):
     env_path (str): Path to the environment.
     """
     logging.info(f"Comparing Conda and Pip packages in environment: {env_path}")
-    conda_packages = set()
-    pip_packages = set()
+    conda_packages = {}
+    pip_packages = {}
 
     try:
         # Get Conda packages
@@ -281,28 +252,38 @@ def compare_conda_and_pip_packages(env_path):
         for line in result.stdout.splitlines():
             if not line.startswith('#'):
                 parts = line.split()
-                if len(parts) > 0:
-                    conda_packages.add(normalize_package_name(parts[0]))
+                if len(parts) > 1:
+                    conda_packages[normalize_package_name(parts[0])] = parts[1]
 
         # Get Pip packages
         result = subprocess.run(['conda', 'run', '-n', os.path.basename(env_path), 'pip', 'list'], capture_output=True, text=True, check=True)
         for line in result.stdout.splitlines()[2:]:  # Skip header lines
             parts = line.split()
-            if len(parts) > 0:
-                pip_packages.add(normalize_package_name(parts[0]))
+            if len(parts) > 1:
+                pip_packages[normalize_package_name(parts[0])] = parts[1]
 
-        only_in_conda = conda_packages - pip_packages
-        only_in_pip = pip_packages - conda_packages
+        only_in_conda = set(conda_packages) - set(pip_packages)
+        only_in_pip = set(pip_packages) - set(conda_packages)
+        in_both = set(conda_packages) & set(pip_packages)
+        different_versions = {pkg for pkg in in_both if conda_packages[pkg] != pip_packages[pkg]}
 
         print(f"\n{Fore.GREEN}Comparison of Conda and Pip packages in environment: {os.path.basename(env_path)}{Style.RESET_ALL}\n")
 
         print(f"{Fore.CYAN}Packages only in Conda:{Style.RESET_ALL}\n")
         for pkg in sorted(only_in_conda):
-            print(f"{Fore.LIGHTGREEN_EX}{pkg}{Style.RESET_ALL}")
+            print(f"{Fore.RED}{pkg}=={conda_packages[pkg]}{Style.RESET_ALL}")
 
         print(f"\n{Fore.CYAN}Packages only in Pip:{Style.RESET_ALL}\n")
         for pkg in sorted(only_in_pip):
-            print(f"{Fore.LIGHTGREEN_EX}{pkg}{Style.RESET_ALL}")
+            print(f"{Fore.RED}{pkg}=={pip_packages[pkg]}{Style.RESET_ALL}")
+
+        print(f"\n{Fore.CYAN}Packages in both but different versions:{Style.RESET_ALL}\n")
+        for pkg in sorted(different_versions):
+            print(f"{Fore.YELLOW}{pkg}=={conda_packages[pkg]} (Conda) != {pip_packages[pkg]} (Pip){Style.RESET_ALL}")
+
+        print(f"\n{Fore.CYAN}Packages in both with same versions:{Style.RESET_ALL}\n")
+        for pkg in sorted(in_both - different_versions):
+            print(f"{Fore.GREEN}{pkg}=={conda_packages[pkg]}{Style.RESET_ALL}")
 
     except subprocess.CalledProcessError as e:
         logging.error(f"Error comparing Conda and Pip packages in {env_path}: {e}")
@@ -330,10 +311,15 @@ def get_dependency_tree(env_path, env_type):
         result = subprocess.run(
             activate_cmd,
             shell=True,
-            capture_output=True,
+            stdout=subprocess.PIPE,  # Capture stdout
+            stderr=subprocess.PIPE,  # Capture stderr
             text=True,
             executable="/bin/bash"
         )
+
+        # Log the output
+        logging.debug(f"pipdeptree output for {env_path}: {result.stdout}")
+        logging.debug(f"pipdeptree errors for {env_path}: {result.stderr}")
 
         if result.returncode != 0:
             logging.error(f"Error getting dependency tree: {result.stderr}")
@@ -356,11 +342,17 @@ def compare_envs(env1_path, env2_path, env_type, env1_name, env2_name):
     env1_name (str): Name of the first environment.
     env2_name (str): Name of the second environment.
     """
+    clear_screen()
+
+    results_dir = create_results_dir()
+
     env1_packages = get_top_level_packages(env1_path, env_type)
     env2_packages = get_top_level_packages(env2_path, env_type)
 
-    only_in_env1 = env1_packages - env2_packages
-    only_in_env2 = env2_packages - env1_packages
+    only_in_env1 = set(env1_packages) - set(env2_packages)
+    only_in_env2 = set(env2_packages) - set(env1_packages)
+    in_both = set(env1_packages) & set(env2_packages)
+    different_versions = {pkg for pkg in in_both if env1_packages[pkg] != env2_packages[pkg]}
 
     env1_vars = get_env_variables(env1_path)
     env2_vars = get_env_variables(env2_path)
@@ -370,22 +362,54 @@ def compare_envs(env1_path, env2_path, env_type, env1_name, env2_name):
 
     results = []
 
-    results.append(f"\n{Fore.GREEN}Comparison complete. Differences:{Style.RESET_ALL}\n")
+    # Color coding explanation in a box
+    column_width = 40
+    border_color = Fore.BLUE
 
-    results.append(f"{Fore.CYAN}Packages in {env1_name}:{Style.RESET_ALL}\n")
-    for pkg in sorted(env1_packages):
-        if pkg in only_in_env1:
-            results.append(f"{Fore.LIGHTGREEN_EX}{pkg}{Style.RESET_ALL}")
-        else:
-            results.append(pkg)
-    
-    results.append(f"\n{Fore.CYAN}Packages in {env2_name}:{Style.RESET_ALL}\n")
-    for pkg in sorted(env2_packages):
-        if pkg in only_in_env2:
-            results.append(f"{Fore.LIGHTGREEN_EX}{pkg}{Style.RESET_ALL}")
-        else:
-            results.append(pkg)
-    
+    clear_screen()
+
+    results.append(f"{border_color}+{'-' * (2 * column_width + 1)}+{Style.RESET_ALL}")
+    results.append(f"{border_color}| {Style.RESET_ALL}{'Color Coding Explanation':<{2 * column_width - 1}} {border_color}|{Style.RESET_ALL}")
+    results.append(f"{border_color}+{'-' * (2 * column_width + 1)}+{Style.RESET_ALL}")
+    results.append(f"{border_color}| {Fore.RED}Red: {Style.RESET_ALL}Package unique to one environment {' ' * (2 * column_width - 40)} {border_color}|")
+    results.append(f"{border_color}| {Fore.YELLOW}Yellow: {Style.RESET_ALL}Same package, different versions {' ' * (2 * column_width - 42)} {border_color}|")
+    results.append(f"{border_color}| {Fore.GREEN}Green: {Style.RESET_ALL}Same package, same version {' ' * (2 * column_width - 35)} {border_color}|")
+    results.append(f"{border_color}+{'-' * (2 * column_width + 1)}+{Style.RESET_ALL}\n")
+
+    # Append table header to results
+    results.append(f"{border_color}+{'-' * column_width}+{'-' * column_width}+{Style.RESET_ALL}")
+    results.append(f"{border_color}| {Fore.WHITE}{env1_name:<{column_width - 2}} {border_color}| {Fore.WHITE}{env2_name:<{column_width - 2}} {border_color}|{Style.RESET_ALL}")
+    results.append(f"{border_color}+{'-' * column_width}+{'-' * column_width}+{Style.RESET_ALL}")
+
+    # Section 1: Same Packages/Versions
+    results.append(f"{border_color}| {Fore.WHITE}{'Same Packages/Versions':<{2 * column_width - 1}} {border_color}|{Style.RESET_ALL}")
+    results.append(f"{border_color}+{'-' * column_width}+{'-' * column_width}+{Style.RESET_ALL}")
+    for pkg in sorted(in_both - different_versions):
+        results.append(f"{border_color}| {Fore.GREEN}{pkg}=={env1_packages[pkg]:<{column_width - len(pkg) - 4}} {border_color}| {Fore.GREEN}{pkg}=={env2_packages[pkg]:<{column_width - len(pkg) - 4}} {border_color}|{Style.RESET_ALL}")
+
+    # Section 2: Same Package/Different Versions
+    results.append(f"{border_color}+{'-' * column_width}+{'-' * column_width}+{Style.RESET_ALL}")
+    results.append(f"{border_color}| {Fore.WHITE}{'Same Package/Different Versions':<{2 * column_width - 1}} {border_color}|{Style.RESET_ALL}")
+    results.append(f"{border_color}+{'-' * column_width}+{'-' * column_width}+{Style.RESET_ALL}")
+    for pkg in sorted(different_versions):
+        results.append(f"{border_color}| {Fore.YELLOW}{pkg}=={env1_packages[pkg]:<{column_width - len(pkg) - 4}} {border_color}| {Fore.YELLOW}{pkg}=={env2_packages[pkg]:<{column_width - len(pkg) - 4}} {border_color}|{Style.RESET_ALL}")
+
+    # Section 3: Unique Packages
+    results.append(f"{border_color}+{'-' * column_width}+{'-' * column_width}+{Style.RESET_ALL}")
+    results.append(f"{border_color}| {Fore.WHITE}{'Unique Packages':<{2 * column_width - 1}} {border_color}|{Style.RESET_ALL}")
+    results.append(f"{border_color}+{'-' * column_width}+{'-' * column_width}+{Style.RESET_ALL}")
+    unique_env1 = sorted(list(only_in_env1))
+    unique_env2 = sorted(list(only_in_env2))
+    max_unique = max(len(unique_env1), len(unique_env2))
+    for i in range(max_unique):
+        pkg_env1 = f"{unique_env1[i]}=={env1_packages[unique_env1[i]]}" if i < len(unique_env1) else ""
+        pkg_env2 = f"{unique_env2[i]}=={env2_packages[unique_env2[i]]}" if i < len(unique_env2) else ""
+        results.append(f"{border_color}| {Fore.RED}{pkg_env1:<{column_width - 2}} {border_color}| {Fore.RED}{pkg_env2:<{column_width - 2}} {border_color}|{Style.RESET_ALL}")
+
+    # End of the table
+    results.append(f"{border_color}+{'-' * column_width}+{'-' * column_width}+{Style.RESET_ALL}")
+
+    # Append environment variables and startup scripts to results
     results.append(f"\n{Fore.YELLOW}Environment variables in {env1_name}:{Style.RESET_ALL}\n")
     if env1_vars:
         for var, val in env1_vars.items():
@@ -414,22 +438,88 @@ def compare_envs(env1_path, env2_path, env_type, env1_name, env2_name):
     else:
         results.append("No startup scripts found.")
 
-    # Write results to a file
-    with open(f"{env1_name}_vs_{env2_name}.txt", "w") as f:
+    # Write results to a file in the results directory
+    results_file = os.path.join(results_dir, f"{env1_name}_vs_{env2_name}.txt")
+    with open(results_file, "w") as f:
         for line in results:
             f.write(line + "\n")
 
+    # Print results to the console
     for line in results:
         print(line)
 
-    print(f"\n{Fore.BLUE}+---------------------------------+{Style.RESET_ALL}")
-    print(f"{Fore.BLUE}|  {Fore.YELLOW}    Comparison Complete!     {Fore.BLUE}  |{Style.RESET_ALL}")
-    print(f"{Fore.BLUE}+---------------------------------+{Style.RESET_ALL}\n")
+    print(f"\n{Fore.CYAN}Note: Detailed logs are available in the 'compare-envs.log' file.{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}Note: Comparisons are saved in the './results' directory.{Style.RESET_ALL}")
+
+
+    print(f"\n{Fore.BLUE}+{'-' * 39}+{Style.RESET_ALL}")
+    print(f"{Fore.BLUE}|  {Fore.YELLOW}    Initial Comparison Complete!     {Fore.BLUE}|{Style.RESET_ALL}")
+    print(f"{Fore.BLUE}+{'-' * 39}+{Style.RESET_ALL}\n")
 
     # Prompt user if they want to see the full dependency tree
-    show_deps = input(f"{Fore.CYAN}Do you want to see the full dependency tree for the environments? (y/n): {Style.RESET_ALL}").strip().lower()
+    show_deps = input(f"{Fore.CYAN}Do you want to see the full dependency tree for the environments? (y/n) [default: n]: {Style.RESET_ALL}").strip().lower() or 'n'
     if show_deps == 'y':
         display_dependency_trees(env1_path, env2_path, env_type, env1_name, env2_name)
+
+    # Prompt user if they want to compare Conda and Pip packages
+    compare_conda_pip = input(f"{Fore.CYAN}Do you want to compare Conda and Pip packages in the environments? (y/n) [default: n]: {Style.RESET_ALL}").strip().lower() or 'n'
+    if compare_conda_pip == 'y':
+        compare_conda_and_pip_packages(env1_path)
+        compare_conda_and_pip_packages(env2_path)
+
+def get_top_level_packages(env_path, env_type):
+    """
+    Get the list of top-level installed packages in the given environment using pipdeptree.
+
+    Args:
+    env_path (str): Path to the environment.
+    env_type (str): Type of the environment ('conda' or 'virtualenv').
+
+    Returns:
+    dict: A dictionary of top-level installed packages and their versions.
+    """
+    logging.info(f"Activating environment: {env_path}")
+    top_level_packages = {}
+
+    try:
+        # Ensure pipdeptree is installed
+        install_pipdeptree(env_path, env_type)
+
+        # Activate the environment and run pipdeptree
+        if env_type == 'conda':
+            activate_cmd = f"conda run -n {os.path.basename(env_path)} python -m pipdeptree --warn silence"
+        else:
+            activate_cmd = f"source {env_path}/bin/activate && pipdeptree --warn silence"
+
+        logging.info(f"Running command: {activate_cmd}")
+        result = subprocess.run(
+            activate_cmd,
+            shell=True,
+            stdout=subprocess.PIPE,  # Capture stdout
+            stderr=subprocess.PIPE,  # Capture stderr
+            text=True,
+            executable="/bin/bash"
+        )
+
+        # Log the output
+        logging.debug(f"pipdeptree output for {env_path}: {result.stdout}")
+        logging.debug(f"pipdeptree errors for {env_path}: {result.stderr}")
+
+        # Process the captured output internally
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                # Check if line represents a top-level package
+                if not line.startswith(('│', '├──', '└──')):
+                    if '==' in line or '@' in line:
+                        # Extract package name and version
+                        package = line.split('==')[0].split('@')[0].strip()
+                        version = line.split('==')[-1] if '==' in line else 'unknown'
+                        top_level_packages[package] = version
+
+        return top_level_packages
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error collecting top-level pip list from {env_path}: {e}")
+        return {}
 
 def display_dependency_trees(env1_path, env2_path, env_type, env1_name, env2_name):
     """
@@ -483,13 +573,9 @@ if __name__ == "__main__":
                     env2_name = os.path.basename(env2_path)
                     compare_envs(env1_path, env2_path, env_type, env1_name, env2_name)
 
-                    # Compare Conda and Pip packages within each selected environment
-                    compare_conda_and_pip_packages(env1_path)
-                    compare_conda_and_pip_packages(env2_path)
-
-                    print(f"\n{Fore.BLUE}+---------------------------------+{Style.RESET_ALL}")
-                    print(f"{Fore.BLUE}|  {Fore.YELLOW}    Comparison Complete!     {Fore.BLUE}  |{Style.RESET_ALL}")
-                    print(f"{Fore.BLUE}+---------------------------------+{Style.RESET_ALL}\n")
+                    print(f"\n{Fore.BLUE}+---------------------------------------+{Style.RESET_ALL}")
+                    print(f"{Fore.BLUE}|  {Fore.YELLOW}        Comparison Complete!       {Fore.BLUE}  |{Style.RESET_ALL}")
+                    print(f"{Fore.BLUE}+---------------------------------------+{Style.RESET_ALL}\n")
 
             except ValueError:
                 logging.error(f"{Fore.RED}Invalid input. Please enter numbers only.{Style.RESET_ALL}")

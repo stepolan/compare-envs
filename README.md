@@ -22,7 +22,7 @@ To set up the environment for running this script, use the provided `environment
 
 ## Usage
 
-Run the script to compare two environments. It lists all top-level packages and highlights the unique ones in bright green. It also compares environment variables and startup scripts if they exist. Additionally, it compares packages listed by Conda and Pip within the same environment.
+Run the script to compare two environments. It lists all top-level packages and highlights the unique ones in bright red, packages with different versions in bright yellow, and packages common to both environments in green. It also compares environment variables and startup scripts if they exist. Additionally, it compares packages listed by Conda and Pip within the same environment.
 
 ```sh
 python compare_envs.py
@@ -38,17 +38,18 @@ python compare_envs.py
 
 The script will display:
 
-- All packages in each environment, with unique packages highlighted in bright green.
+- All packages in each environment, with unique packages highlighted in bright red, packages with different versions in bright yellow, and packages common to both environments in green.
 - Environment variables specific to each environment.
 - Startup scripts specific to each environment.
 - Comparison of packages listed by Conda and Pip within the same environment.
 
-The results will also be saved in a file named `<env1 name>_vs_<env2 name>.txt`.
+The results will also be saved in './results/ with a file named `<env1 name>_vs_<env2 name>.txt`.
 
 ### Notes
 
 - If `pipdeptree` is not installed in the target environments, the script will automatically install it.
 - Ensure you have the necessary permissions to activate and modify the target environments.
+- Detailed logs are available in the `compare-envs.log` file.
 
 ## License
 
