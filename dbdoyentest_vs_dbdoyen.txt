@@ -1,0 +1,36 @@
+
+[32mComparison complete. Differences:[0m
+
+[36mPackages in dbdoyentest:[0m
+
+[92mFaker==25.8.0[0m
+[92mblueprint==3.4.2[0m
+[92mfastembed==0.3.0[0m
+[92mlangchain-community==0.2.5[0m
+[92mpdfplumber==0.11.1[0m
+[92mpigar==2.1.4[0m
+pipdeptree==2.23.0
+[92mpipreqs==0.5.0[0m
+wheel==0.43.0
+
+[36mPackages in dbdoyen:[0m
+
+pipdeptree==2.23.0
+[92msetuptools==69.5.1[0m
+wheel==0.43.0
+
+[33mEnvironment variables in dbdoyentest:[0m
+
+No environment variables found.
+
+[33mEnvironment variables in dbdoyen:[0m
+
+No environment variables found.
+
+[33mStartup scripts in dbdoyentest:[0m
+
+No startup scripts found.
+
+[33mStartup scripts in dbdoyen:[0m
+
+No startup scripts found.

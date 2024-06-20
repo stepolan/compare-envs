@@ -1,0 +1,46 @@
+
+[32mComparison complete. Differences:[0m
+
+[36mPackages in agentdba:[0m
+
+[92mFlask[0m
+[92mchromadb[0m
+[92mhttptools[0m
+langchain-community
+[92mmysql-connector-python[0m
+[92mopenai[0m
+pdfplumber
+pipdeptree
+[92mpython-dotenv[0m
+[92msetuptools[0m
+[92muvloop[0m
+[92mwatchfiles[0m
+[92mwebsockets[0m
+wheel
+
+[36mPackages in dbdoyentest:[0m
+
+[92mFaker[0m
+[92mfastembed[0m
+langchain-community
+pdfplumber
+[92mpigar[0m
+pipdeptree
+[92mpipreqs[0m
+wheel
+
+[33mEnvironment variables in agentdba:[0m
+
+No environment variables found.
+
+[33mEnvironment variables in dbdoyentest:[0m
+
+No environment variables found.
+
+[33mStartup scripts in agentdba:[0m
+
+No startup scripts found.
+
+[33mStartup scripts in dbdoyentest:[0m
+
+No startup scripts found.

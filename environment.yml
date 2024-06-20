@@ -1,7 +1,9 @@
 name: compare-envs
 channels:
-  - defaults
   - conda-forge
+  - defaults
 dependencies:
-  - python=3.12
+  - python=3.8
   - pip
+  - pipdeptree
+  - colorama
